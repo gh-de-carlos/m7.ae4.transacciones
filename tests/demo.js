@@ -3,10 +3,10 @@ import * as orderService from '../services/orderService.js';
 /**
  * Comprehensive test suite for PostgreSQL transaction demonstrations
  * Separated from server.js for better organization
- * Classic ASCII output without emojis
  */
 
 // Test data with 3 successful orders plus 1 rollback scenario
+// Rollback test uses real database constraint (existing email with different name)
 const testOrders = [
     // SUCCESS #1: Basic laptop order  
     {
@@ -44,17 +44,17 @@ const testOrders = [
         cantidad: 1,
         simulateError: false
     },
-    // ROLLBACK: Simulated payment failure
+    // ROLLBACK: Real database constraint violation (existing email with different name)
     {
         cliente: {
-            nombre: 'Ana Patricia Morales',
-            email: 'ana.morales@financiera.cl',
+            nombre: 'PEPITO NOMBRE_INCORRECTO',  // This name doesn't match existing email
+            email: 'juan.martinez@empresa.cl',  // This email already exists with different name
             telefono: '+56944444444',
             direccion: 'Av. Las Condes 2000, Las Condes'
         },
         producto: 'Teclado Mecánico',
         cantidad: 2,
-        simulateError: true
+        simulateError: false  // No artificial error - real validation failure
     }
 ];
 
@@ -62,21 +62,26 @@ const testOrders = [
  * Run individual transaction test
  */
 async function runTransactionTest(orderData, testNumber, expectedResult) {
-    console.log('\\n' + '='.repeat(60));
+    console.log('\n' + '='.repeat(60));
     console.log(`TEST ${testNumber}: ${expectedResult.toUpperCase()} TRANSACTION`);
     console.log('='.repeat(60));
     
     console.log('>> Processing order...');
     console.log(`   Customer: ${orderData.cliente.nombre}`);
+    console.log(`   Email: ${orderData.cliente.email}`);
     console.log(`   Product: ${orderData.producto}`);
     console.log(`   Quantity: ${orderData.cantidad}`);
     console.log(`   Expected: ${expectedResult}`);
+    
+    if (expectedResult === 'ROLLBACK') {
+        console.log('   Rollback Test: Customer name/email validation failure');
+    }
     
     try {
         const result = await orderService.processCompleteOrder(orderData);
         
         if (expectedResult === 'SUCCESS') {
-            console.log('\\n>> TRANSACTION RESULT:');
+            console.log('\n>> TRANSACTION RESULT:');
             console.log('   Status: COMMIT executed successfully');
             console.log('   Order ID:', result.pedido?.id || 'N/A');
             console.log('   Customer ID:', result.cliente?.id || 'N/A');
@@ -92,20 +97,21 @@ async function runTransactionTest(orderData, testNumber, expectedResult) {
                 console.log(`   Stock: ${result.resumen.stock_anterior} -> ${result.resumen.stock_nuevo}`);
             }
         } else {
-            console.log('\\n>> ERROR: Transaction should have failed but succeeded');
+            console.log('\n>> ERROR: Transaction should have failed but succeeded');
         }
         
         return { success: true, result };
         
     } catch (error) {
         if (expectedResult === 'ROLLBACK') {
-            console.log('\\n>> TRANSACTION RESULT:');
+            console.log('\n>> TRANSACTION RESULT:');
             console.log('   Status: ROLLBACK executed correctly');
-            console.log('   Error:', error.message);
+            console.log('   Validation Error:', error.message);
+            console.log('   Reason: Customer name/email mismatch validation');
             console.log('   Data integrity: MAINTAINED');
             console.log('   All operations: REVERTED');
         } else {
-            console.log('\\n>> UNEXPECTED ERROR:', error.message);
+            console.log('\n>> UNEXPECTED ERROR:', error.message);
         }
         
         return { success: expectedResult === 'ROLLBACK', error: error.message };
@@ -116,23 +122,25 @@ async function runTransactionTest(orderData, testNumber, expectedResult) {
  * Run batch processing test
  */
 async function runBatchProcessingTest() {
-    console.log('\\n' + '='.repeat(60));
+    console.log('\n' + '='.repeat(60));
     console.log('BATCH PROCESSING TEST: MULTIPLE TRANSACTIONS');
     console.log('='.repeat(60));
     
     try {
         console.log(`>> Processing batch of ${testOrders.length} orders...`);
+        console.log('>> Note: This will process the same test orders as individual tests');
+        console.log('>> Expected: 3 successes, 1 failure (rollback due to name/email mismatch)');
         
         const result = await orderService.batchProcessOrders(testOrders, false);
         
-        console.log('\\n>> BATCH PROCESSING SUMMARY:');
+        console.log('\n>> BATCH PROCESSING SUMMARY:');
         console.log(`   Total orders: ${result.total}`);
         console.log(`   Successful: ${result.successful}`);
         console.log(`   Failed: ${result.failed}`);
         console.log(`   Success rate: ${((result.successful / result.total) * 100).toFixed(1)}%`);
         
         if (result.errors.length > 0) {
-            console.log('\\n>> ERRORS ENCOUNTERED:');
+            console.log('\n>> ERRORS ENCOUNTERED:');
             result.errors.forEach((error, index) => {
                 console.log(`   ${index + 1}. Order ${error.index + 1}: ${error.error}`);
             });
@@ -150,7 +158,7 @@ async function runBatchProcessingTest() {
  * Display system statistics
  */
 async function displaySystemStatistics() {
-    console.log('\\n' + '='.repeat(60));
+    console.log('\n' + '='.repeat(60));
     console.log('SYSTEM STATISTICS');
     console.log('='.repeat(60));
     
@@ -164,7 +172,7 @@ async function displaySystemStatistics() {
         console.log(`   Unique customers: ${summary.estadisticas.clientes_unicos}`);
         
         if (summary.productos_stock_bajo && summary.productos_stock_bajo.length > 0) {
-            console.log('\\n>> LOW STOCK ALERTS:');
+            console.log('\n>> LOW STOCK ALERTS:');
             summary.productos_stock_bajo.forEach(producto => {
                 console.log(`   - ${producto.producto}: ${producto.stock} units`);
             });
@@ -182,7 +190,7 @@ async function displaySystemStatistics() {
  * Main test suite execution
  */
 export async function runComprehensiveTestSuite() {
-    console.log('\\n' + '#'.repeat(70));
+    console.log('\n' + '#'.repeat(70));
     console.log('STARTING COMPREHENSIVE TRANSACTION TEST SUITE');
     console.log('#'.repeat(70));
     
@@ -195,7 +203,7 @@ export async function runComprehensiveTestSuite() {
     
     try {
         // Run individual transaction tests
-        console.log('\\n>> Phase 1: Individual Transaction Tests');
+        console.log('\n>> Phase 1: Individual Transaction Tests');
         
         // Test 1: Success
         results.individual.push(
@@ -217,19 +225,26 @@ export async function runComprehensiveTestSuite() {
             await runTransactionTest(testOrders[3], 4, 'ROLLBACK')
         );
         
-        // Run batch processing test
-        console.log('\\n>> Phase 2: Batch Processing Test');
+        // Clean test data before batch processing to avoid conflicts
+        console.log('\n>> Phase 2: Batch Processing Test');
+        console.log('>> Cleaning test data before batch processing...');
+        
+        // Import clean function
+        const { cleanTestData } = await import('../database/init.js');
+        await cleanTestData();
+        console.log('>> Test data cleaned - ready for batch processing');
+        
         results.batch = await runBatchProcessingTest();
         
         // Display statistics
-        console.log('\\n>> Phase 3: System Statistics');
+        console.log('\n>> Phase 3: System Statistics');
         results.statistics = await displaySystemStatistics();
         
         // Final summary
         const endTime = Date.now();
         const duration = ((endTime - results.startTime) / 1000).toFixed(2);
-        
-        console.log('\\n' + '#'.repeat(70));
+
+        console.log('\n' + '#'.repeat(70));
         console.log('TEST SUITE EXECUTION SUMMARY');
         console.log('#'.repeat(70));
         
@@ -241,12 +256,12 @@ export async function runComprehensiveTestSuite() {
         console.log('>> All transaction controls: FUNCTIONAL');
         console.log('>> Database integrity: MAINTAINED');
         
-        console.log('\\n>> Test suite completed successfully');
+        console.log('\n>> Test suite completed successfully');
         
         return results;
         
     } catch (error) {
-        console.error('\\n>> CRITICAL ERROR in test suite:', error.message);
+        console.error('\n>> CRITICAL ERROR in test suite:', error.message);
         console.error('>> Test suite execution FAILED');
         throw error;
     }

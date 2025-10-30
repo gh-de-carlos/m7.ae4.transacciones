@@ -10,44 +10,65 @@ import { TransactionManager, simulateRandomError, forceError } from '../utils/tr
 
 /**
  * Process a complete order transaction
- * Creates client, registers order, and updates inventory in a single transaction
+ * Creates client, registers order(s), and updates inventory in a single transaction
  * @param {Object} orderData - Complete order information
  * @param {Object} orderData.cliente - Client data
- * @param {string} orderData.producto - Product name
- * @param {number} orderData.cantidad - Quantity ordered
+ * @param {string|Array} orderData.producto - Single product name or array of products
+ * @param {number|Array} orderData.cantidad - Single quantity or array of quantities
+ * @param {Array} orderData.productos - Alternative: array of {producto, cantidad} objects
  * @param {boolean} orderData.simulateError - Whether to simulate an error for testing
  * @returns {Promise<Object>} Complete order result
  */
 export const processCompleteOrder = async (orderData) => {
-    const { cliente, producto, cantidad, simulateError = false } = orderData;
+    const { cliente, producto, cantidad, productos, simulateError = false } = orderData;
+    
+    // Normalize input to always work with array of products
+    let productItems = [];
+    
+    if (productos && Array.isArray(productos)) {
+        // Multiple products format: {productos: [{producto: "name", cantidad: 2}, ...]}
+        productItems = productos;
+    } else if (producto && cantidad) {
+        // Single product format: {producto: "name", cantidad: 2}
+        productItems = [{ producto, cantidad }];
+    } else {
+        throw new Error('Se requiere especificar "producto" y "cantidad", o un array "productos"');
+    }
     
     return TransactionManager.executeOrderTransaction(async (client) => {
         let createdClient;
-        let foundProduct;
-        let createdOrder;
-        let updatedProduct;
+        let processedProducts = [];
+        let createdOrders = [];
+        let totalOrderValue = 0;
         
         try {
             // Step 1: Create or verify client
-            console.log('1. Creando cliente...');
+            console.log('1. Verificando/creando cliente...');
             createdClient = await clienteDAO.createClient(cliente, client);
-            console.log(`[OK] Cliente creado: ${createdClient.nombre} (ID: ${createdClient.id})`);
+            console.log(`[OK] Cliente procesado: ${createdClient.nombre} (ID: ${createdClient.id})`);
             
-            // Step 2: Verify product exists and get its data
-            console.log('2. Verificando producto...');
-            foundProduct = await inventarioDAO.getProductByName(producto, client);
-            if (!foundProduct) {
-                throw new Error(`Producto "${producto}" no encontrado en inventario`);
-            }
-            console.log(`[OK] Producto encontrado: ${foundProduct.producto} (Stock: ${foundProduct.stock})`);
+            // Step 2: Process each product
+            console.log(`2. Procesando ${productItems.length} producto(s)...`);
             
-            // Step 3: Check stock availability
-            console.log('3. Verificando stock...');
-            const hasStock = await inventarioDAO.checkStock(foundProduct.id, cantidad, client);
-            if (!hasStock) {
-                throw new Error(`Stock insuficiente para "${producto}". Stock actual: ${foundProduct.stock}, solicitado: ${cantidad}`);
+            for (let i = 0; i < productItems.length; i++) {
+                const { producto: productName, cantidad: qty } = productItems[i];
+                console.log(`   2.${i+1}. Verificando producto: ${productName}`);
+                
+                // Find product
+                const foundProduct = await inventarioDAO.getProductByName(productName, client);
+                if (!foundProduct) {
+                    throw new Error(`Producto "${productName}" no encontrado en inventario`);
+                }
+                
+                // Check stock
+                const hasStock = await inventarioDAO.checkStock(foundProduct.id, qty, client);
+                if (!hasStock) {
+                    throw new Error(`Stock insuficiente para "${productName}". Stock actual: ${foundProduct.stock}, solicitado: ${qty}`);
+                }
+                
+                console.log(`   [OK] ${productName}: Stock ${foundProduct.stock} >= ${qty} solicitado`);
+                processedProducts.push({ ...foundProduct, cantidadPedida: qty });
             }
-            console.log(`[OK] Stock suficiente para ${cantidad} unidades`);
             
             // Simulate error for testing ROLLBACK (if requested)
             if (simulateError) {
@@ -55,35 +76,52 @@ export const processCompleteOrder = async (orderData) => {
                 forceError('Error simulado: Problema en el sistema de pagos');
             }
             
-            // Step 4: Create order
-            console.log('4. Creando pedido...');
-            const orderInfo = {
-                cliente_id: createdClient.id,
-                producto_id: foundProduct.id,
-                cantidad: cantidad,
-                precio_unitario: foundProduct.precio
-            };
-            createdOrder = await pedidoDAO.createOrder(orderInfo, client);
-            console.log(`[OK] Pedido creado: ID ${createdOrder.id}, Total: $${createdOrder.total}`);
+            // Step 3: Create orders and update inventory
+            console.log('3. Creando pedidos y actualizando inventario...');
             
-            // Step 5: Update inventory
-            console.log('5. Actualizando inventario...');
-            updatedProduct = await inventarioDAO.updateStock(foundProduct.id, cantidad, client);
-            console.log(`[OK] Inventario actualizado: ${updatedProduct.producto} (Nuevo stock: ${updatedProduct.stock})`);
+            for (let i = 0; i < processedProducts.length; i++) {
+                const product = processedProducts[i];
+                
+                // Create order
+                const orderInfo = {
+                    cliente_id: createdClient.id,
+                    producto_id: product.id,
+                    cantidad: product.cantidadPedida,
+                    precio_unitario: product.precio
+                };
+                
+                const createdOrder = await pedidoDAO.createOrder(orderInfo, client);
+                console.log(`   [OK] Pedido ${i+1}: ${product.producto} x${product.cantidadPedida} = $${createdOrder.total}`);
+                
+                // Update inventory
+                const updatedProduct = await inventarioDAO.updateStock(product.id, product.cantidadPedida, client);
+                console.log(`   [OK] Stock actualizado: ${updatedProduct.producto} (${product.stock} -> ${updatedProduct.stock})`);
+                
+                createdOrders.push(createdOrder);
+                totalOrderValue += parseFloat(createdOrder.total);
+                
+                // Update processed product with new stock
+                processedProducts[i] = { ...product, nuevoStock: updatedProduct.stock };
+            }
             
             // Return complete transaction result
             return {
                 cliente: createdClient,
-                producto: updatedProduct,
-                pedido: createdOrder,
+                productos: processedProducts,
+                pedidos: createdOrders,
                 resumen: {
                     cliente_nombre: createdClient.nombre,
-                    producto_nombre: foundProduct.producto,
-                    cantidad_pedida: cantidad,
-                    precio_unitario: foundProduct.precio,
-                    total_pedido: createdOrder.total,
-                    stock_anterior: foundProduct.stock,
-                    stock_nuevo: updatedProduct.stock
+                    total_productos: processedProducts.length,
+                    total_pedidos: createdOrders.length,
+                    valor_total: totalOrderValue.toFixed(2),
+                    productos_detalle: processedProducts.map(p => ({
+                        producto: p.producto,
+                        cantidad: p.cantidadPedida,
+                        precio_unitario: p.precio,
+                        subtotal: (p.precio * p.cantidadPedida).toFixed(2),
+                        stock_anterior: p.stock,
+                        stock_nuevo: p.nuevoStock
+                    }))
                 }
             };
             

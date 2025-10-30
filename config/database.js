@@ -30,10 +30,11 @@ const dbConfig = {
     host: process.env.DB_HOST,
     database: process.env.DB_NAME,
     password: process.env.DB_PASSWORD,
+    // log: console.log,
     port: parseInt(process.env.DB_PORT) || 5432,
-    max: 20, // Conexiones máximas en el pool
-    idleTimeoutMillis: 30000, // Tiempo máximo que un cliente puede estar inactivo
-    connectionTimeoutMillis: 2000, // Tiempo máximo para intentar conectar antes de rendirse
+    max: 20,                                        // max connected pool clients
+    idleTimeoutMillis: 300000,                      // 5 minutes idle timeout
+    connectionTimeoutMillis: 5000,                  // 5 seconds connection timeout
 };
 
 // Creamos el pool de conexiones pasando el

@@ -4,18 +4,33 @@
  */
 
 /**
- * Create a new client
+ * Create or validate client with proper email/name logic
  * @param {Object} client - Client data
  * @param {string} client.nombre - Client name
  * @param {string} client.email - Client email
  * @param {string} client.telefono - Client phone
  * @param {string} client.direccion - Client address
  * @param {Object} dbClient - Database client for transaction
- * @returns {Promise<Object>} Created client data
+ * @returns {Promise<Object>} Created or existing client data
  */
 export const createClient = async (client, dbClient) => {
     const { nombre, email, telefono, direccion } = client;
     
+    // First check if email already exists
+    const existingClient = await getClientByEmail(email, dbClient);
+    
+    if (existingClient) {
+        // Email exists - check if name matches
+        if (existingClient.nombre !== nombre) {
+            throw new Error(`Email ${email} ya existe con diferente nombre: "${existingClient.nombre}". Se esperaba: "${nombre}"`);
+        }
+        
+        // Email and name match - return existing client
+        console.log(`[INFO] Cliente existente encontrado: ${existingClient.nombre} (${email})`);
+        return existingClient;
+    }
+    
+    // New email and name - create new client
     const query = `
         INSERT INTO clientes (nombre, email, telefono, direccion)
         VALUES ($1, $2, $3, $4)
@@ -28,9 +43,6 @@ export const createClient = async (client, dbClient) => {
         const result = await dbClient.query(query, values);
         return result.rows[0];
     } catch (error) {
-        if (error.code === '23505') { // Unique violation (email already exists)
-            throw new Error(`El email ${email} ya está registrado`);
-        }
         throw new Error(`Error creando cliente: ${error.message}`);
     }
 };

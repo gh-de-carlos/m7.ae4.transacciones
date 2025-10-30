@@ -27,6 +27,27 @@ Supón que estás trabajando con una base de datos de ~~banco~~ o tienda. Vas a 
 - Capturar errores y mostrar mensajes específicos.
 - Asegurarse de liberar el `client` en todos los casos (`finally`).
 
+## Notas
+
+- He implementado varios endpoints que no se piden, pero han servido para aprender buenas prácticas, algunas de grado industrial. Por ejemplo:
+    - `/tests/run` puedes ejecutar tests para probar las transacciones sin tener que ingresar data manualmente.
+    - `/test/cleanse` que sirve para limpiar la data de los test. En este caso, puedes agregar la query `?mode=full` si quieres limpiar toda la data y resetear las secuencias.
+    - `/health` es de juguete pero importante para acostumbrarse a crear buenas apis.
+- Otra costumbre, es que los endpoints que modifican recursos (no el estado del server necesariamente) están detrás de una sub ruta `/api` que permite dejar limpio el dominio raíz para implementar frontend o similares.
+- Por último, el "cómo":
+    1. Clona el proyecto.
+    2. Crea una bd `transacciones_db` en PostgreSQL
+    3. Haz `cd ruta_del_proyecto`
+    4. `npm i`
+    5. Modifica el `.env.example`: [copia y] renombra a `.env` y además coloca tus credenciales.
+    6. Lanza el server con `npm start`
+    7. En otra terminal corre `curl -X http://localhost:3000/tests/run` para ejecutar los tests.
+    8. Checkea las diferencias en tu DB o en el browser o donde quieras.
+    9. Consejo: utiliza `jq` si usas la terminal para una salida más linda con `curl`, o bien utiliza Postman, Insomnia, Bruno, Juanito o lo que quieras si quieres un cliente separado. También puedes correr los endpoints GET directo en el browser. Como la salida es `JSON` si tienes un visor json se verá *cute*. Dos capturas:
+
+![captura1](./screenshot_1.png)
+![captura1](./screenshot_2.png)
+
 ## API Endpoints
 
 La aplicación expone los siguientes endpoints REST para interactuar con el sistema de transacciones:
@@ -36,7 +57,7 @@ La aplicación expone los siguientes endpoints REST para interactuar con el sist
 - `GET /health` - Estado del sistema y conectividad de la base de datos
 
 ### **Gestión de Pedidos**
-- `POST /api/orders` - Crear nuevo pedido con transacción completa
+- `POST /api/orders` - Crear pedido (producto único o múltiples productos)
 - `GET /api/orders` - Listar todos los pedidos procesados
 
 ### **Consultas de Inventario**
@@ -44,8 +65,7 @@ La aplicación expone los siguientes endpoints REST para interactuar con el sist
 - `GET /api/customers` - Listar todos los clientes registrados
 
 ### **Suite de Pruebas**
-- `POST /tests/run` - Ejecutar suite completa de pruebas de transacciones
-- `POST /tests/quick` - Ejecutar prueba rápida de transacción individual
+- `POST /tests/run` - Ejecutar suite completa de pruebas (3 exitosas + 1 rollback)
 
 ### **Ejemplo de Uso**
 
@@ -65,13 +85,15 @@ curl -X POST http://localhost:3000/api/orders \
     "cantidad": 1
   }'
 
-# Crear un pedido con múltiples productos
+# Crear pedido con múltiples productos
 curl -X POST http://localhost:3000/api/orders \
   -H "Content-Type: application/json" \
   -d '{
     "cliente": {
       "nombre": "María González",
-      "email": "maria@email.com"
+      "email": "maria@email.com",
+      "telefono": "+56987654321",
+      "direccion": "Av. Las Condes 456, Santiago"
     },
     "productos": [
       {
@@ -89,15 +111,40 @@ curl -X POST http://localhost:3000/api/orders \
     ]
   }'
 
-# Verificar inventario
+# Crear pedido con cliente existente (validación email/nombre)
+curl -X POST http://localhost:3000/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cliente": {
+      "nombre": "María González",
+      "email": "maria@email.com"
+    },
+    "producto": "Laptop Gaming",
+    "cantidad": 1
+  }'
+
+# Verificar inventario actual
 curl http://localhost:3000/api/inventory
 
-# Ejecutar pruebas completas
+# Listar todos los clientes
+curl http://localhost:3000/api/customers
+
+# Ver pedidos procesados
+curl http://localhost:3000/api/orders
+
+# Ejecutar suite completa de pruebas (3 exitosas + 1 rollback)
 curl -X POST http://localhost:3000/tests/run
 ```
 
 **Características principales:**
 - Control de transacciones ACID (BEGIN/COMMIT/ROLLBACK)
-- Validación de stock y unicidad de emails
+- Soporte para pedidos de producto único o múltiples productos
+- Validación inteligente de clientes (email + nombre matching)
+- Validación de stock y disponibilidad de productos
 - Manejo robusto de errores con rollback automático
 - Salida de consola estilo ASCII clásico
+
+**Lógica de validación de clientes:**
+- Si el email es nuevo: se crea un cliente nuevo
+- Si el email existe con el mismo nombre: se reutiliza el cliente existente
+- Si el email existe con diferente nombre: se rechaza con error
