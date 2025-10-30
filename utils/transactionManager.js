@@ -22,7 +22,7 @@ export const executeTransaction = async (transactionFn, options = {}) => {
         client = await getClient();
         
         if (logQueries) {
-            console.log('🔄 Iniciando transacción...');
+            console.log('[PROCESSING] Iniciando transacción...');
         }
         
         // Begin transaction
@@ -39,7 +39,7 @@ export const executeTransaction = async (transactionFn, options = {}) => {
         await client.query('COMMIT');
         
         if (logQueries) {
-            console.log('✅ COMMIT ejecutado - Transacción completada exitosamente');
+            console.log('[OK] COMMIT ejecutado - Transacción completada exitosamente');
         }
         
         return result;
@@ -49,15 +49,15 @@ export const executeTransaction = async (transactionFn, options = {}) => {
             try {
                 await client.query('ROLLBACK');
                 if (logQueries) {
-                    console.log('🔄 ROLLBACK ejecutado - Transacción revertida');
+                    console.log('[PROCESSING] ROLLBACK ejecutado - Transacción revertida');
                 }
             } catch (rollbackError) {
-                console.error('❌ Error ejecutando ROLLBACK:', rollbackError);
+                console.error('[ERROR] Error ejecutando ROLLBACK:', rollbackError);
             }
         }
         
         // Log the error with context
-        console.error('❌ Error en transacción:', {
+        console.error('[ERROR] Error en transacción:', {
             message: error.message,
             code: error.code,
             detail: error.detail,
@@ -69,7 +69,7 @@ export const executeTransaction = async (transactionFn, options = {}) => {
         if (client) {
             client.release();
             if (logQueries) {
-                console.log('🔓 Cliente liberado del pool de conexiones');
+                console.log('[RELEASED] Cliente liberado del pool de conexiones');
             }
         }
     }
@@ -87,14 +87,14 @@ export const executeSequentialTransactions = async (transactionFns, options = {}
     
     for (let i = 0; i < transactionFns.length; i++) {
         try {
-            console.log(`🔄 Ejecutando transacción ${i + 1} de ${transactionFns.length}...`);
+            console.log(`[PROCESSING] Ejecutando transacción ${i + 1} de ${transactionFns.length}...`);
             
             const result = await executeTransaction(transactionFns[i], options);
             results.push(result);
             
-            console.log(`✅ Transacción ${i + 1} completada`);
+            console.log(`[OK] Transacción ${i + 1} completada`);
         } catch (error) {
-            console.error(`❌ Error en transacción ${i + 1}:`, error.message);
+            console.error(`[ERROR] Error en transacción ${i + 1}:`, error.message);
             throw new Error(`Transacción ${i + 1} falló: ${error.message}`);
         }
     }
@@ -114,8 +114,8 @@ export class TransactionManager {
      * @returns {Promise<any>} Transaction result
      */
     static async executeOrderTransaction(orderFn, orderData) {
-        console.log('🛒 Iniciando transacción de pedido...');
-        console.log('📦 Datos del pedido:', {
+        console.log('[ORDER] Iniciando transacción de pedido...');
+        console.log('[DATA] Datos del pedido:', {
             cliente: orderData.cliente?.nombre || 'N/A',
             producto: orderData.producto || 'N/A',
             cantidad: orderData.cantidad || 0
@@ -124,7 +124,7 @@ export class TransactionManager {
         return executeTransaction(async (client) => {
             const result = await orderFn(client);
             
-            console.log('✅ Pedido procesado exitosamente:', {
+            console.log('[OK] Pedido procesado exitosamente:', {
                 pedidoId: result.pedido?.id || 'N/A',
                 clienteId: result.cliente?.id || 'N/A',
                 productoId: result.producto?.id || 'N/A',
@@ -142,13 +142,13 @@ export class TransactionManager {
      * @returns {Promise<any>} Transaction result
      */
     static async executeInventoryTransaction(inventoryFn, inventoryData) {
-        console.log('📦 Iniciando transacción de inventario...');
+        console.log('[DATA] Iniciando transacción de inventario...');
         console.log('🔢 Datos del inventario:', inventoryData);
         
         return executeTransaction(async (client) => {
             const result = await inventoryFn(client);
             
-            console.log('✅ Inventario actualizado exitosamente');
+            console.log('[OK] Inventario actualizado exitosamente');
             
             return result;
         }, { logQueries: true });
@@ -170,7 +170,7 @@ export class TransactionManager {
         return executeTransaction(async (client) => {
             const result = await clientFn(client);
             
-            console.log('✅ Cliente procesado exitosamente:', {
+            console.log('[OK] Cliente procesado exitosamente:', {
                 clienteId: result.id || 'N/A',
                 nombre: result.nombre || 'N/A'
             });

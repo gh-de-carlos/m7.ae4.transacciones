@@ -29,34 +29,34 @@ export const processCompleteOrder = async (orderData) => {
         
         try {
             // Step 1: Create or verify client
-            console.log('1️⃣ Creando cliente...');
+            console.log('1. Creando cliente...');
             createdClient = await clienteDAO.createClient(cliente, client);
-            console.log(`✅ Cliente creado: ${createdClient.nombre} (ID: ${createdClient.id})`);
+            console.log(`[OK] Cliente creado: ${createdClient.nombre} (ID: ${createdClient.id})`);
             
             // Step 2: Verify product exists and get its data
-            console.log('2️⃣ Verificando producto...');
+            console.log('2. Verificando producto...');
             foundProduct = await inventarioDAO.getProductByName(producto, client);
             if (!foundProduct) {
                 throw new Error(`Producto "${producto}" no encontrado en inventario`);
             }
-            console.log(`✅ Producto encontrado: ${foundProduct.producto} (Stock: ${foundProduct.stock})`);
+            console.log(`[OK] Producto encontrado: ${foundProduct.producto} (Stock: ${foundProduct.stock})`);
             
             // Step 3: Check stock availability
-            console.log('3️⃣ Verificando stock...');
+            console.log('3. Verificando stock...');
             const hasStock = await inventarioDAO.checkStock(foundProduct.id, cantidad, client);
             if (!hasStock) {
                 throw new Error(`Stock insuficiente para "${producto}". Stock actual: ${foundProduct.stock}, solicitado: ${cantidad}`);
             }
-            console.log(`✅ Stock suficiente para ${cantidad} unidades`);
+            console.log(`[OK] Stock suficiente para ${cantidad} unidades`);
             
             // Simulate error for testing ROLLBACK (if requested)
             if (simulateError) {
-                console.log('⚠️ Simulando error para prueba de ROLLBACK...');
+                console.log('[WARNING] Simulando error para prueba de ROLLBACK...');
                 forceError('Error simulado: Problema en el sistema de pagos');
             }
             
             // Step 4: Create order
-            console.log('4️⃣ Creando pedido...');
+            console.log('4. Creando pedido...');
             const orderInfo = {
                 cliente_id: createdClient.id,
                 producto_id: foundProduct.id,
@@ -64,12 +64,12 @@ export const processCompleteOrder = async (orderData) => {
                 precio_unitario: foundProduct.precio
             };
             createdOrder = await pedidoDAO.createOrder(orderInfo, client);
-            console.log(`✅ Pedido creado: ID ${createdOrder.id}, Total: $${createdOrder.total}`);
+            console.log(`[OK] Pedido creado: ID ${createdOrder.id}, Total: $${createdOrder.total}`);
             
             // Step 5: Update inventory
-            console.log('5️⃣ Actualizando inventario...');
+            console.log('5. Actualizando inventario...');
             updatedProduct = await inventarioDAO.updateStock(foundProduct.id, cantidad, client);
-            console.log(`✅ Inventario actualizado: ${updatedProduct.producto} (Nuevo stock: ${updatedProduct.stock})`);
+            console.log(`[OK] Inventario actualizado: ${updatedProduct.producto} (Nuevo stock: ${updatedProduct.stock})`);
             
             // Return complete transaction result
             return {
@@ -88,7 +88,7 @@ export const processCompleteOrder = async (orderData) => {
             };
             
         } catch (error) {
-            console.error(`❌ Error en el paso de procesamiento: ${error.message}`);
+            console.error(`[ERROR] Error en el paso de procesamiento: ${error.message}`);
             throw error; // This will trigger ROLLBACK
         }
         
@@ -194,18 +194,18 @@ export const batchProcessOrders = async (ordersData, stopOnError = true) => {
     const results = [];
     const errors = [];
     
-    console.log(`🔄 Procesando lote de ${ordersData.length} pedidos...`);
+    console.log(`[PROCESSING] Procesando lote de ${ordersData.length} pedidos...`);
     
     for (let i = 0; i < ordersData.length; i++) {
         try {
-            console.log(`\n📦 Procesando pedido ${i + 1}/${ordersData.length}...`);
+            console.log(`\n[ORDER] Procesando pedido ${i + 1}/${ordersData.length}...`);
             const result = await processCompleteOrder(ordersData[i]);
             results.push({ index: i, success: true, data: result });
-            console.log(`✅ Pedido ${i + 1} procesado exitosamente`);
+            console.log(`[OK] Pedido ${i + 1} procesado exitosamente`);
         } catch (error) {
             const errorInfo = { index: i, success: false, error: error.message };
             errors.push(errorInfo);
-            console.error(`❌ Error en pedido ${i + 1}: ${error.message}`);
+            console.error(`[ERROR] Error en pedido ${i + 1}: ${error.message}`);
             
             if (stopOnError) {
                 console.log('🛑 Deteniendo procesamiento por error...');

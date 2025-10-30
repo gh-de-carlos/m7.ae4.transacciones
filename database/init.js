@@ -2,8 +2,39 @@ import { pool } from '../config/database.js';
 
 /**
  * Database initialization script
- * Creates tables and inserts initial data
+ * Creates tables, cleans existing data, and inserts fresh initial data
  */
+
+/**
+ * Clean existing data from tables to start fresh (without dropping tables)
+ */
+const cleanExistingData = async () => {
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        console.log('>> Cleaning existing data...');
+        
+        // Truncate tables in correct order (respecting foreign key constraints)
+        await client.query('TRUNCATE TABLE pedidos RESTART IDENTITY CASCADE');
+        await client.query('TRUNCATE TABLE clientes RESTART IDENTITY CASCADE'); 
+        await client.query('TRUNCATE TABLE inventario RESTART IDENTITY CASCADE');
+        
+        console.log('>> All existing data cleared');
+        console.log('>> Identity sequences reset to 1');
+        
+        await client.query('COMMIT');
+        console.log('[OK] Database cleaned successfully');
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('[ERROR] Error cleaning database:', error);
+        throw error;
+    } finally {
+        client.release();
+    }
+};
 
 const createTables = async () => {
     const client = await pool.connect();
@@ -108,21 +139,23 @@ const insertInitialData = async () => {
 
 /**
  * Initialize the database with tables and initial data
+ * Cleans existing data first to ensure fresh state
  */
 export const initializeDatabase = async () => {
     try {
-        console.log('🔧 Inicializando base de datos...');
+        console.log('[CONFIG] Inicializando base de datos...');
         await createTables();
+        await cleanExistingData();
         await insertInitialData();
-        console.log('✅ Base de datos inicializada correctamente');
+        console.log('[OK] Base de datos inicializada correctamente');
     } catch (error) {
-        console.error('❌ Error inicializando base de datos:', error);
+        console.error('[ERROR] Error inicializando base de datos:', error);
         throw error;
     }
 };
 
 /**
- * Clean up database (for testing purposes)
+ * Clean up database completely (drops tables - for testing purposes)
  */
 export const cleanDatabase = async () => {
     const client = await pool.connect();
@@ -130,16 +163,17 @@ export const cleanDatabase = async () => {
     try {
         await client.query('BEGIN');
         
+        console.log('>> Dropping all tables...');
         await client.query('DROP TABLE IF EXISTS pedidos CASCADE');
         await client.query('DROP TABLE IF EXISTS inventario CASCADE');
         await client.query('DROP TABLE IF EXISTS clientes CASCADE');
         
         await client.query('COMMIT');
-        console.log('✓ Base de datos limpiada');
+        console.log('[OK] Base de datos completamente limpiada');
         
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error('✗ Error limpiando base de datos:', error);
+        console.error('[ERROR] Error limpiando base de datos:', error);
         throw error;
     } finally {
         client.release();
